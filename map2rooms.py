@@ -1,4 +1,5 @@
 import os
+import math
 from PIL import Image
 from PIL import ImageDraw
 
@@ -15,18 +16,18 @@ IMG_SCALE = 16
 # 2. Data Structures
 # ---------------------------------------------------------
 map_data = []         
-edges_list = []       
 unique_vertices = []  
 
-# Start our edge ID assignment at 1 for Scratch 1-based lists
+edges_data = []       
+
 current_edge_id = 1
 
-# Room Tracking
 map_room_id = [0] * TOTAL_TILES 
 room_edges_dict = {}  
+room_tiles_dict = {}  
 
-# NEW: Flat tracking list for matching Edge ID -> Room ID
-edge_to_room_id = []
+room_start_list = []
+room_len_list = []
 
 # ---------------------------------------------------------
 # 3. Helper Functions
@@ -45,22 +46,32 @@ def get_or_create_vertex(x, y):
     unique_vertices.append(coord)
     return len(unique_vertices)
 
-def add_edge(x1, y1, x2, y2, edge_type_id, room_id=-1):
+def add_edge(x1, y1, x2, y2, edge_type_id):
     global current_edge_id
     assigned_id = current_edge_id
     
     v1_id = get_or_create_vertex(x1, y1)
     v2_id = get_or_create_vertex(x2, y2)
     
-    edges_list.append(edge_type_id)
-    edges_list.append(v1_id)
-    edges_list.append(v2_id)
+    dx = x2 - x1
+    dy = y2 - y1
     
-    # NEW: Track room mapping per edge
-    edge_to_room_id.append(room_id)
+    num_tiles = int(math.ceil(math.hypot(dx, dy)))
+    c_face = 1 if dx == 0 else 0  
+    normal_angle = int(round((math.degrees(math.atan2(dy, dx)) - 90) % 360))
     
-    current_edge_id += 3
-    return int((assigned_id + 2) / 3)
+    edges_data.append({
+        'id': assigned_id,
+        'type': edge_type_id,
+        'v1': v1_id,
+        'v2': v2_id,
+        'num_tiles': num_tiles,
+        'c_face': c_face,
+        'normal_angle': normal_angle
+    })
+    
+    current_edge_id += 1
+    return assigned_id
 
 def flood_fill_void():
     queue_x, queue_y = [], []
@@ -159,11 +170,14 @@ def main():
                 queue = [idx]
                 map_room_id[idx] = current_room_id
                 room_edges_dict[current_room_id] = []
+                room_tiles_dict[current_room_id] = [] 
                 
                 head = 0
                 while head < len(queue):
                     curr = queue[head]
                     head += 1
+                    
+                    room_tiles_dict[current_room_id].append(curr + 1)
                     
                     neighbors = [curr - MAP_WIDTH, curr + MAP_WIDTH, curr - 1, curr + 1]
                     for n in neighbors:
@@ -187,7 +201,7 @@ def main():
                 facing_room = map_room_id[((y - 1) * MAP_WIDTH) + start_x]
                 while x < MAP_WIDTH and get_tile(x, y) == 1 and get_tile(x, y - 1) == 0:
                     x += 1
-                edge_id = add_edge(start_x, y, x, y, edge_type_id=1, room_id=facing_room if facing_room > 0 else -1)
+                edge_id = add_edge(start_x, y, x, y, edge_type_id=1)
                 if facing_room > 0: room_edges_dict[facing_room].append(edge_id)
             else: x += 1
                 
@@ -199,7 +213,7 @@ def main():
                 facing_room = map_room_id[((y + 1) * MAP_WIDTH) + start_x]
                 while x < MAP_WIDTH and get_tile(x, y) == 1 and get_tile(x, y + 1) == 0:
                     x += 1
-                edge_id = add_edge(x, y + 1, start_x, y + 1, edge_type_id=1, room_id=facing_room if facing_room > 0 else -1)
+                edge_id = add_edge(x, y + 1, start_x, y + 1, edge_type_id=1)
                 if facing_room > 0: room_edges_dict[facing_room].append(edge_id)
             else: x += 1
 
@@ -211,7 +225,7 @@ def main():
                 facing_room = map_room_id[(start_y * MAP_WIDTH) + (x - 1)]
                 while y < MAP_HEIGHT and get_tile(x, y) == 1 and get_tile(x - 1, y) == 0:
                     y += 1
-                edge_id = add_edge(x, y, x, start_y, edge_type_id=1, room_id=facing_room if facing_room > 0 else -1)
+                edge_id = add_edge(x, y, x, start_y, edge_type_id=1)
                 if facing_room > 0: room_edges_dict[facing_room].append(edge_id)
             else: y += 1
 
@@ -223,7 +237,7 @@ def main():
                 facing_room = map_room_id[(start_y * MAP_WIDTH) + (x + 1)]
                 while y < MAP_HEIGHT and get_tile(x, y) == 1 and get_tile(x + 1, y) == 0:
                     y += 1
-                edge_id = add_edge(x + 1, start_y, x + 1, y, edge_type_id=1, room_id=facing_room if facing_room > 0 else -1)
+                edge_id = add_edge(x + 1, start_y, x + 1, y, edge_type_id=1)
                 if facing_room > 0: room_edges_dict[facing_room].append(edge_id)
             else: y += 1
 
@@ -236,59 +250,107 @@ def main():
                 room_A = 0
                 room_B = 0
                 
-                # Horizontal Door
                 if get_tile(x - 1, y) == 1 or get_tile(x + 1, y) == 1:
                     room_A = map_room_id[((y - 1) * MAP_WIDTH) + x]
                     room_B = map_room_id[((y + 1) * MAP_WIDTH) + x]
                     
-                    # 1. Double-sided door (Recessed perfectly at y + 0.5)
-                    door_edges.append(add_edge(x, y + 0.5, x + 1, y + 0.5, edge_type_id=2, room_id=room_A if room_A > 0 else room_B))
-                    door_edges.append(add_edge(x + 1, y + 0.5, x, y + 0.5, edge_type_id=2, room_id=room_B if room_B > 0 else room_A))
+                    door_edges.append(add_edge(x, y + 0.5, x + 1, y + 0.5, edge_type_id=2))
+                    door_edges.append(add_edge(x + 1, y + 0.5, x, y + 0.5, edge_type_id=2))
+                    door_edges.append(add_edge(x, y, x, y + 0.5, edge_type_id=1))       
+                    door_edges.append(add_edge(x, y + 0.5, x, y + 1, edge_type_id=1))   
+                    door_edges.append(add_edge(x + 1, y + 1, x + 1, y + 0.5, edge_type_id=1)) 
+                    door_edges.append(add_edge(x + 1, y + 0.5, x + 1, y, edge_type_id=1))     
                     
-                    # 2. Left Frame (Set to -1)
-                    door_edges.append(add_edge(x, y, x, y + 0.5, edge_type_id=1, room_id=-1))       
-                    door_edges.append(add_edge(x, y + 0.5, x, y + 1, edge_type_id=1, room_id=-1))   
-                    
-                    # 3. Right Frame (Set to -1)
-                    door_edges.append(add_edge(x + 1, y + 1, x + 1, y + 0.5, edge_type_id=1, room_id=-1)) 
-                    door_edges.append(add_edge(x + 1, y + 0.5, x + 1, y, edge_type_id=1, room_id=-1))     
-                    
-                # Vertical Door
                 elif get_tile(x, y - 1) == 1 or get_tile(x, y + 1) == 1:
                     room_A = map_room_id[(y * MAP_WIDTH) + (x - 1)]
                     room_B = map_room_id[(y * MAP_WIDTH) + (x + 1)]
                     
-                    # 1. Double-sided door (Recessed perfectly at x + 0.5)
-                    door_edges.append(add_edge(x + 0.5, y + 1, x + 0.5, y, edge_type_id=2, room_id=room_A if room_A > 0 else room_B))
-                    door_edges.append(add_edge(x + 0.5, y, x + 0.5, y + 1, edge_type_id=2, room_id=room_B if room_B > 0 else room_A))
-                    
-                    # 2. Top Frame (Set to -1)
-                    door_edges.append(add_edge(x + 1, y, x + 0.5, y, edge_type_id=1, room_id=-1))   
-                    door_edges.append(add_edge(x + 0.5, y, x, y, edge_type_id=1, room_id=-1))       
-                    
-                    # 3. Bottom Frame (Set to -1)
-                    door_edges.append(add_edge(x, y + 1, x + 0.5, y + 1, edge_type_id=1, room_id=-1)) 
-                    door_edges.append(add_edge(x + 0.5, y + 1, x + 1, y + 1, edge_type_id=1, room_id=-1)) 
+                    door_edges.append(add_edge(x + 0.5, y + 1, x + 0.5, y, edge_type_id=2))
+                    door_edges.append(add_edge(x + 0.5, y, x + 0.5, y + 1, edge_type_id=2))
+                    door_edges.append(add_edge(x + 1, y, x + 0.5, y, edge_type_id=1))   
+                    door_edges.append(add_edge(x + 0.5, y, x, y, edge_type_id=1))       
+                    door_edges.append(add_edge(x, y + 1, x + 0.5, y + 1, edge_type_id=1)) 
+                    # Corrected bounds order alignment
+                    door_edges.append(add_edge(x + 0.5, y + 1, x + 1, y + 1, edge_type_id=1)) 
                 
-                # Assign all 6 newly created segments to BOTH touching rooms structural lists
                 for e_id in door_edges:
                     if room_A > 0 and e_id not in room_edges_dict[room_A]:
                         room_edges_dict[room_A].append(e_id)
                     if room_B > 0 and e_id not in room_edges_dict[room_B]:
                         room_edges_dict[room_B].append(e_id)
 
-    # --- PACKING ROOM ARRAYS ---
-    room_start_list = []
-    room_len_list = []
-    packed_room_edges = []
+    # --- PACKING MASTER SECTOR LIST & INVERSE MAP COMPILATION ---
+    rooms_list = []
+    room_ptr_list = []
+    room_texture_list = [] 
     
-    current_start = 1 
+    # NEW: Prepare an inverse table to track which rooms contain which Edge IDs
+    edge_to_rooms = {e['id']: [] for e in edges_data}
+    
+    current_room_index = 1 
+    
     for r_id in range(1, current_room_id):
-        edges = sorted(list(set(room_edges_dict.get(r_id, []))))
-        room_start_list.append(current_start)
-        room_len_list.append(len(edges))
-        packed_room_edges.extend(edges)
-        current_start += len(edges)
+        room_ptr_list.append(current_room_index)
+        
+        room_edges = sorted(list(set(room_edges_dict.get(r_id, []))))
+        room_tiles = sorted(list(set(room_tiles_dict.get(r_id, [])))) 
+        
+        # Populate the inverse map lookup
+        for e_id in room_edges:
+            if r_id not in edge_to_rooms[e_id]:
+                edge_to_rooms[e_id].append(r_id)
+        
+        room_vertices_set = set()
+        for e_id in room_edges:
+            edge = edges_data[e_id - 1] 
+            room_vertices_set.add(edge['v1'])
+            room_vertices_set.add(edge['v2'])
+        room_vertices = sorted(list(room_vertices_set))
+
+        min_x, min_y = float('inf'), float('inf')
+        max_x, max_y = float('-inf'), float('-inf')
+
+        for v_id in room_vertices:
+            vx, vy = unique_vertices[v_id - 1]
+            if vx < min_x: min_x = vx
+            if vy < min_y: min_y = vy
+            if vx > max_x: max_x = vx
+            if vy > max_y: max_y = vy
+        
+        min_x = int(min_x) if min_x == int(min_x) else min_x
+        min_y = int(min_y) if min_y == int(min_y) else min_y
+        max_x = int(max_x) if max_x == int(max_x) else max_x
+        max_y = int(max_y) if max_y == int(max_y) else max_y
+        
+        num_tiles = len(room_tiles)
+        door_edge_count = sum(1 for e_id in room_edges if edges_data[e_id - 1]['type'] == 2)
+        num_doors = door_edge_count // 2
+        
+        if num_tiles >= 64:
+            texture_id = 3
+        elif num_doors <= 1:
+            texture_id = 1
+        else:
+            texture_id = 2
+            
+        room_texture_list.append(texture_id)
+
+        num_v = len(room_vertices)
+        num_e = len(room_edges)
+        num_t = len(room_tiles)
+        
+        rooms_list.append(num_v) 
+        rooms_list.append(num_e) 
+        rooms_list.append(num_t) 
+        
+        rooms_list.extend(room_vertices)
+        rooms_list.extend(room_edges)
+        rooms_list.extend(room_tiles) 
+        
+        rooms_list.extend([min_x, min_y, max_x, max_y])
+        
+        current_room_index += 3 + num_v + num_e + num_t + 4
+
 
     # ---------------------------------------------------------
     # 5. File Exports
@@ -296,33 +358,58 @@ def main():
     def clean_num(val):
         return str(int(val)) if val == int(val) else str(val)
 
-    with open("vertexX.txt", "w") as f:
-        for coord in unique_vertices: f.write(clean_num(coord[0]) + "\n")
-    with open("vertexY.txt", "w") as f:
-        for coord in unique_vertices: f.write(clean_num(coord[1]) + "\n")
+    # Create the output directory if it doesn't exist
+    export_dir = "MapBakedLists"
+    os.makedirs(export_dir, exist_ok=True)
+
+    # Format the original map_data to be comma-separated
+    with open(f"{export_dir}/map_export.txt", "w") as f:
+        f.write("[" + ", ".join(map(str, [0 if i == -1 else i for i in map_data])) + "]")
+    print(f"Exported map.txt")
+    # Interleave X and Y into a single vertex list for Goboscript
+    packed_vertices = []
+    for v in unique_vertices:
+        packed_vertices.extend([clean_num(v[0]), clean_num(v[1])])
+        
+    with open(f"{export_dir}/vertex.txt", "w") as f:
+        f.write("[" + ", ".join(packed_vertices) + "]")
+
     print(f"Exported vertices ({len(unique_vertices)})")
 
-    with open("edges.txt", "w") as f:
-        for val in edges_list: f.write(str(val) + "\n")
-    print(f"Exported edges ({int(len(edges_list)/3)})")
+    with open(f"{export_dir}/edges.txt", "w") as f:
+        f.write("[" + ", ".join(
+            str(val)
+            for d in edges_data
+            for key in ['type', 'v1', 'v2', 'num_tiles', 'c_face', 'normal_angle']
+            for val in [d[key]]
+    ) + "]")
+    print(f"Exported edges ({int(len(edges_data))})")
 
-    # NEW: Export edgeId2Roomid.txt flat Stride-1 list
-    with open("edgeId2Roomid.txt", "w") as f:
-        for val in edge_to_room_id: 
-            f.write(str(val) + "\n")
-    print(f"Exported edgeId2Roomid.txt ({len(edge_to_room_id)} entries)")
+    with open(f"{export_dir}/edgeId2Roomid.txt", "w") as f:
+        f.write("[")
+        for edge in edges_data:
+            e_id = edge['id']
+            rooms = edge_to_rooms[e_id]
+            room1 = rooms[0] if len(rooms) > 0 else 0            
 
-    with open("map_room_id.txt", "w") as f:
-        for val in map_room_id: f.write(str(val) + "\n")
-    print("Exported map_room_id.txt (4096-entry grid mapping)")
+            f.write(str(room1) + ", ")
+        f.write("]" )
+    print(f"Exported edgeId2Roomid.txt ({len(edges_data)}) entries")
 
-    with open("room_start.txt", "w") as f:
-        for val in room_start_list: f.write(str(val) + "\n")
-    with open("room_len.txt", "w") as f:
-        for val in room_len_list: f.write(str(val) + "\n")
-    with open("room_edges.txt", "w") as f:
-        for val in packed_room_edges: f.write(str(val) + "\n")
-    print(f"Exported room mapping arrays ({len(packed_room_edges)} packed elements)")
+    with open(f"{export_dir}/map_room_id.txt", "w") as f:
+        f.write("[" + ", ".join(map(str, map_room_id)) + "]")
+    print(f"Exported map_room_id.txt (4096-entry grid mapping)")
+
+    with open(f"{export_dir}/rooms.txt", "w") as f:
+        f.write("[" + ", ".join(map(str, rooms_list)) + "]")
+    print(f"Exported room mapping arrays ({len(rooms_list)} packed elements)")
+
+    with open(f"{export_dir}/room_ptr.txt", "w") as f:
+         f.write("[" + ", ".join(map(str, room_ptr_list)) + "]")
+    print(f"Exported room_ptr.txt ({len(room_ptr_list)} pointers)")
+
+    print(f"Successfully exported all comma-separated lists to ./{export_dir}/")
+
 
     # ---------------------------------------------------------
     # 6. Image Generation (Blueprint Verification)
@@ -333,10 +420,10 @@ def main():
     draw = ImageDraw.Draw(img)
     
     i = 0
-    while i < len(edges_list):
-        e_type = edges_list[i]
-        v1_idx = edges_list[i + 1] - 1
-        v2_idx = edges_list[i + 2] - 1
+    while i < len(edges_data):
+        e_type = edge['type']
+        v1_idx = edge['v1'] - 1
+        v2_idx = edge['v2'] - 1
         px1 = unique_vertices[v1_idx][0] * IMG_SCALE
         py1 = unique_vertices[v1_idx][1] * IMG_SCALE
         px2 = unique_vertices[v2_idx][0] * IMG_SCALE
@@ -348,9 +435,9 @@ def main():
         radius = 2
         draw.ellipse((px1 - radius, py1 - radius, px1 + radius, py1 + radius), fill="#ff3333")
         draw.ellipse((px2 - radius, py2 - radius, px2 + radius, py2 + radius), fill="#ff3333")
-        i += 3
+        i += 6
         
-    img.save("vector_map_blueprint.png")
+    img.save(f"{export_dir}/vector_map_blueprint.png")
     print("Exported vector_map_blueprint.png")
 
 if __name__ == "__main__":

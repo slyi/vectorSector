@@ -1,15 +1,21 @@
 {
-	"version": "2.0.0",
-	"tasks": [
+    "version": "2.0.0",
+    "tasks": [
         {
             "label": "Run Goboscript Build Script",
             "type": "shell",
-            "command": "goboscript build \n \"C:\\Progra~1\\WindowsApps\\45747ThomasWeber.TurboWarpDesktop_1.16.0.0_x64__dx91esefr5w5e\\app\\TurboWarp.exe\" ${workspaceFolderBasename}.sb3",
+            "command": "python macro_processor.py pre && goboscript build && python macro_processor.py post && \"C:\\Progra~1\\WindowsApps\\45747ThomasWeber.TurboWarpDesktop_1.16.0.0_x64__dx91esefr5w5e\\app\\TurboWarp.exe\" ${workspaceFolderBasename}.sb3",
             "args": [],
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
+            "problemMatcher": []
+        },
+        {
+            "label": "Force Restore Macros",
+            "type": "shell",
+            "command": "python macro_processor.py post",
             "problemMatcher": []
         },
         {
