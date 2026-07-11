@@ -8,5 +8,4 @@ list drawCommands = [];
 list roomBB =[];
 list frustrumFloorTiles=[];
 list frameEdge = [];
-
-
+list frameEntity = [];

@@ -12,12 +12,18 @@ TOTAL_TILES = MAP_WIDTH * MAP_HEIGHT
 
 IMG_SCALE = 16 
 
+# Entity type map (Extendable for new asset types)
+ENTITY_CHAR_MAP = {
+    'a': 1,  # e.g., Player/Enemy start
+    'b': 2,  # e.g., Static decoration / Ammo item
+    'c': 3   # e.g., Light source billboard
+}
+
 # ---------------------------------------------------------
 # 2. Data Structures
 # ---------------------------------------------------------
 map_data = []         
 unique_vertices = []  
-
 edges_data = []       
 
 current_edge_id = 1
@@ -25,6 +31,9 @@ current_edge_id = 1
 map_room_id = [0] * TOTAL_TILES 
 room_edges_dict = {}  
 room_tiles_dict = {}  
+
+# Temporary holding for raw entity instances discovered on load
+entities_found = []
 
 room_start_list = []
 room_len_list = []
@@ -153,7 +162,29 @@ def main():
         return
         
     with open("map.txt", "r") as f:
-        map_data.extend([int(t) for t in f.read().split()])
+        tokens = f.read().split()
+
+    # Process tokens strings safely to pull out entity coordinates
+    for idx, token in enumerate(tokens):
+        x = idx % MAP_WIDTH
+        y = idx // MAP_WIDTH
+        
+        if token.isdigit():
+            map_data.append(int(token))
+        else:
+            # Found alpha entity! Look up numerical ID
+            char_lower = token.lower()
+            type_id = ENTITY_CHAR_MAP.get(char_lower, 1)
+            
+            # Place the entity exactly in the center of the 1x1 grid square
+            entities_found.append({
+                'type': type_id,
+                'wx': x + 0.5,
+                'wz': y + 0.5,
+                'tile_idx': idx
+            })
+            # Overwrite token back into walkable floor space for standard tracing
+            map_data.append(0)
             
     flood_fill_void()
     cull_unreachable_pockets()
@@ -191,6 +222,15 @@ def main():
                 current_room_id += 1
     
     print(f"Mapped {current_room_id - 1} distinct rooms.")
+    
+    # --- PHASE: ASSIGN ENTITIES TO ROOMS ---
+    room_entities_dict = {r_id: [] for r_id in range(1, current_room_id)}
+    
+    for ent in entities_found:
+        r_id = map_room_id[ent['tile_idx']]
+        if r_id > 0:
+            # Store [tile_idx (1-indexed for Scratch), type]
+            room_entities_dict[r_id].append({'tile_idx': ent['tile_idx'] + 1, 'type': ent['type']})
             
     # --- PASS 1-4: WALL TRACING ---
     for y in range(MAP_HEIGHT):
@@ -270,7 +310,6 @@ def main():
                     door_edges.append(add_edge(x + 1, y, x + 0.5, y, edge_type_id=1))   
                     door_edges.append(add_edge(x + 0.5, y, x, y, edge_type_id=1))       
                     door_edges.append(add_edge(x, y + 1, x + 0.5, y + 1, edge_type_id=1)) 
-                    # Corrected bounds order alignment
                     door_edges.append(add_edge(x + 0.5, y + 1, x + 1, y + 1, edge_type_id=1)) 
                 
                 for e_id in door_edges:
@@ -284,9 +323,7 @@ def main():
     room_ptr_list = []
     room_texture_list = [] 
     
-    # NEW: Prepare an inverse table to track which rooms contain which Edge IDs
     edge_to_rooms = {e['id']: [] for e in edges_data}
-    
     current_room_index = 1 
     
     for r_id in range(1, current_room_id):
@@ -295,7 +332,6 @@ def main():
         room_edges = sorted(list(set(room_edges_dict.get(r_id, []))))
         room_tiles = sorted(list(set(room_tiles_dict.get(r_id, [])))) 
         
-        # Populate the inverse map lookup
         for e_id in room_edges:
             if r_id not in edge_to_rooms[e_id]:
                 edge_to_rooms[e_id].append(r_id)
@@ -339,18 +375,30 @@ def main():
         num_e = len(room_edges)
         num_t = len(room_tiles)
         
+        # Pull harvested Entity indices for this room
+        r_entities = room_entities_dict.get(r_id, [])
+        num_ent = len(r_entities) # This is the number of entities
+        
+        # 1. 4-Item Structural Header [V, E, F, Ent]
         rooms_list.append(num_v) 
         rooms_list.append(num_e) 
         rooms_list.append(num_t) 
+        rooms_list.append(num_ent) 
         
+        # 2. Dynamic Strides
         rooms_list.extend(room_vertices)
         rooms_list.extend(room_edges)
         rooms_list.extend(room_tiles) 
         
+        # 3. Fixed Bounding Box Block (4 values)
         rooms_list.extend([min_x, min_y, max_x, max_y])
         
-        current_room_index += 3 + num_v + num_e + num_t + 4
-
+        # 4. Local Entity Block (2-Stride: [tile_idx, type])
+        for ent in r_entities:
+            rooms_list.extend([ent['tile_idx'], ent['type']])
+        
+        # Pointer Math Shift tracker updating
+        current_room_index += 4 + num_v + num_e + num_t + 4 + (num_ent * 2)
 
     # ---------------------------------------------------------
     # 5. File Exports
@@ -358,22 +406,18 @@ def main():
     def clean_num(val):
         return str(int(val)) if val == int(val) else str(val)
 
-    # Create the output directory if it doesn't exist
     export_dir = "MapBakedLists"
     os.makedirs(export_dir, exist_ok=True)
 
-    # Format the original map_data to be comma-separated
     with open(f"{export_dir}/map_export.txt", "w") as f:
         f.write("[" + ", ".join(map(str, [0 if i == -1 else i for i in map_data])) + "]")
-    print(f"Exported map.txt")
-    # Interleave X and Y into a single vertex list for Goboscript
+    
     packed_vertices = []
     for v in unique_vertices:
         packed_vertices.extend([clean_num(v[0]), clean_num(v[1])])
         
     with open(f"{export_dir}/vertex.txt", "w") as f:
         f.write("[" + ", ".join(packed_vertices) + "]")
-
     print(f"Exported vertices ({len(unique_vertices)})")
 
     with open(f"{export_dir}/edges.txt", "w") as f:
@@ -382,8 +426,9 @@ def main():
             for d in edges_data
             for key in ['type', 'v1', 'v2', 'num_tiles', 'c_face', 'normal_angle']
             for val in [d[key]]
-    ) + "]")
+        ) + "]")
     print(f"Exported edges ({int(len(edges_data))})")
+
 
     with open(f"{export_dir}/edgeId2Roomid.txt", "w") as f:
         f.write("[")
@@ -391,9 +436,8 @@ def main():
             e_id = edge['id']
             rooms = edge_to_rooms[e_id]
             room1 = rooms[0] if len(rooms) > 0 else 0            
-
             f.write(str(room1) + ", ")
-        f.write("]" )
+        f.write("]")
     print(f"Exported edgeId2Roomid.txt ({len(edges_data)}) entries")
 
     with open(f"{export_dir}/map_room_id.txt", "w") as f:
@@ -408,8 +452,8 @@ def main():
          f.write("[" + ", ".join(map(str, room_ptr_list)) + "]")
     print(f"Exported room_ptr.txt ({len(room_ptr_list)} pointers)")
 
+    print(f"Exported {int(len(r_entities))} entities to rooms list")
     print(f"Successfully exported all comma-separated lists to ./{export_dir}/")
-
 
     # ---------------------------------------------------------
     # 6. Image Generation (Blueprint Verification)
@@ -419,8 +463,7 @@ def main():
     img = Image.new("RGB", (img_width, img_height), "#1a1a1a")
     draw = ImageDraw.Draw(img)
     
-    i = 0
-    while i < len(edges_data):
+    for edge in edges_data:
         e_type = edge['type']
         v1_idx = edge['v1'] - 1
         v2_idx = edge['v2'] - 1
@@ -430,12 +473,11 @@ def main():
         py2 = unique_vertices[v2_idx][1] * IMG_SCALE
         
         line_col = "#00ffcc" if e_type == 1 else "#ffdd00"
-        
         draw.line((px1, py1, px2, py2), fill=line_col, width=2)
+        
         radius = 2
         draw.ellipse((px1 - radius, py1 - radius, px1 + radius, py1 + radius), fill="#ff3333")
         draw.ellipse((px2 - radius, py2 - radius, px2 + radius, py2 + radius), fill="#ff3333")
-        i += 6
         
     img.save(f"{export_dir}/vector_map_blueprint.png")
     print("Exported vector_map_blueprint.png")

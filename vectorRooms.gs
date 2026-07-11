@@ -79,6 +79,7 @@ list edges = [%include MapBakedLists/edges.txt%];
 list vertex = [%include MapBakedLists/vertex.txt%];
 list edge2Room = [%include MapBakedLists/edgeId2Roomid.txt%];
 
+
 list roomTexture = [3, 1, 2, 1, 2, 2, 1, 2, 3, 1, 3, 3, 3, 2, 2, 1, 1, 2, 2, 2, 2, 1, 2, 1, 1, 4, 1];
 
 list edgeSort = [];
@@ -128,6 +129,7 @@ proc _3dEngine {
     delete edgeSort;
     delete walls;    
     delete frameEdge;
+    delete frameEntity;
 
     furthest_wall_depth = 0;
     vLineIdx=0;
@@ -135,7 +137,7 @@ proc _3dEngine {
     _c "#1. Find which Room Sector the player is standing in";
     currentTile = floor(playerX) + floor(playerY) * 64 + 1;
     currentRoom = map_room_id[currentTile];
-    connectedRoom = 0;
+    connectedRoom = -1;
 
     if map[currentTile] == 2 {
         adj1 = map_room_id[currentTile - 64];
@@ -172,9 +174,9 @@ proc _3dEngine {
         cachedFloorRoom = 0;
     }
     _c "#3. Process room geometries";
-    if currentRoom > 0 { process_room currentRoom; }
-    if connectedRoom > 0 { process_room connectedRoom;  }
     
+    if connectedRoom > 0 { process_room connectedRoom;  }
+    if currentRoom > 0 { process_room currentRoom; }
    
 
     _c "#=================================================================";
@@ -309,7 +311,7 @@ proc harvest_floor_tiles targetRoom {
     f_len = rooms[read_ptr + 2];
     
     _c "#Advance pointer past Header (3) + Vertices + Edges to reach Floor Tile IDs";
-    read_ptr = read_ptr + 3 + v_len + e_len;
+    read_ptr = read_ptr + 4 + v_len + e_len;
     quadrant = floor(((playerDir % 360) + 360) % 360 / 90);
     repeat f_len {
         currentTile = rooms[read_ptr]; 
@@ -346,18 +348,21 @@ proc harvest_floor_tiles targetRoom {
     }
 }
 
+
+
 proc process_room targetRoom {
     _c "#Process room geometry: transform vertices, assemble edges";
     _c "#Find where this room's data block begins";
     read_ptr = room_ptr[$targetRoom];
     
-    _c "#Extract header properties";
+    _c "#Header extraction using 4-item stride [V, E, F, Ent]";
     v_len = rooms[read_ptr];
     e_len = rooms[read_ptr + 1];
-    f_len = rooms[read_ptr + 2]; 
+    f_len = rooms[read_ptr + 2];
+    ent_len = rooms[read_ptr + 3]; 
     
-    _c "#Move pointer past the 3 header values directly to the Vertex IDs";
-    read_ptr += 3; 
+    _c "#Move pointer past the 4 header values directly to the Vertex IDs";
+    read_ptr += 4; 
 
     _c "#==========================================================";
     _c "#--- PASS 1: VERTEX TRANSFORMATIONS (Vertex Shader) -------";
@@ -460,11 +465,56 @@ proc process_room targetRoom {
                     }
 
                     add ((tz1 + tz2) / 2) to edgeSort;
-                    add edge_id to edgeSort;
+                    add edge_id to edgeSort;                    
                 }
             }
         }
         read_ptr += 1;
+    }
+    _c "#==========================================================";
+    _c "#--- PASS 3: ENTITY HARVESTING & PARALLAX SETUP -----------";
+    _c "#==========================================================";    
+    
+    if ent_len > 0 {
+        _c "# read_ptr is already past the header.";
+        _c "# Jump pointer past V, E, F lists and Bounding Box (4) to hit Entities";
+        ent_ptr = room_ptr[$targetRoom] + 4 + v_len + e_len + f_len + 4;
+        
+        repeat ent_len {
+            t_idx = rooms[ent_ptr];
+            ent_type = rooms[ent_ptr + 1];
+            
+            _c "# 1. Unpack 1D index to Grid Coordinates";
+            tileX = (t_idx - 1) % 64;
+            tileY = floor((t_idx - 1) / 64);
+            
+            _c "# 2. Calculate offset to the dead-center of the tile";
+            dxC = (tileX + 0.5) - playerX;
+            dyC = (tileY + 0.5) - playerY;
+            
+            _c "# 3. Transform Center Point to Camera Space";
+            txC = dxC * camCos - dyC * camSin;
+            tzC = dxC * camSin + dyC * camCos;
+            
+            _c "# 4. Near Plane Clipping Guard";
+            if tzC > 0.1 {
+                
+                _c "# Push 8-stride tuple: [Type, zAvg, x1, z1, x2, z2, roomId, drawIdx]";
+                _c "# x1/x2 bounds represent a 1-unit wide camera-facing billboard";
+                add ent_type to frameEntity;
+                add tzC to frameEntity;        # zAvg (Used for sorting)
+                add txC - 0.5 to frameEntity;  # x1 (Left edge)
+                add tzC to frameEntity;        # z1
+                add txC + 0.5 to frameEntity;  # x2 (Right edge)
+                add tzC to frameEntity;        # z2
+                add $targetRoom to frameEntity;# roomId
+                add 0 to frameEntity;          # drawCommand_idx_start
+
+            }
+            
+            _c "# Advance pointer by 2 for the [tile_idx, type] stride";
+            ent_ptr += 2;
+        }
     }
 }
 
@@ -529,7 +579,7 @@ proc getRoomBB targetRoom {
     
     _c "#1. Find where this room's data block begins";
     read_ptr = room_ptr[$targetRoom];
-    read_ptr = read_ptr + 3 + rooms[read_ptr] + rooms[read_ptr + 1] + rooms[read_ptr + 2];
+    read_ptr = read_ptr + 4 + rooms[read_ptr] + rooms[read_ptr + 1] + rooms[read_ptr + 2];
     
     _c "#4. Stream the 4 bounding box values (minX, minY, maxX, maxY) into the list";
     repeat 4 {
@@ -555,7 +605,11 @@ proc insertWall{
         wy1 = vertex[v1_ptr + 1];
         wx2 = vertex[v2_ptr];
         wy2 = vertex[v2_ptr + 1];
-        edgeRoomTexture=roomTexture[edge2Room[c_id]];
+        if edge2Room[c_id] > 0{
+            roomId= edge2Room[c_id];
+        }
+        #else {roomId=}
+        edgeRoomTexture=roomTexture[roomId];
 
         _c "# 2. Compute isDoorFrame boolean";
         wall_len = sqrt(((wx2 - wx1) * (wx2 - wx1)) + ((wy2 - wy1) * (wy2 - wy1)));
@@ -570,9 +624,9 @@ proc insertWall{
             }
         }
 
-        emit_wall start_vis_x, new_tz1, end_vis_x, new_tz2, c_face, c_id, c_type,roomTextureId;
+        emit_wall start_vis_x, new_tz1, end_vis_x, new_tz2, c_face, c_id, c_type, roomTextureId, roomId ;
         _c "#Add Wall to the Frame Edge for Wall Shader, if this edge is not a door frame"; 
-        if edge2Room[c_id]>-1{
+        if roomId > 0 {
             populate_frameEdge c_id, edgeRoomTexture;
         }
         else{
@@ -621,7 +675,7 @@ proc populate_frameEdge c_id,  c_roomTextureId {
 }
 
 
-proc emit_wall sx1, sz1, sx2, sz2, face, edge, e_type, textureId {
+proc emit_wall sx1, sz1, sx2, sz2, face, edge, e_type, textureId, roomId {
     _c "#Push 11-element wall stride to walls list";
     add $sx1 to walls;
     add $sz1 to walls;
@@ -635,10 +689,11 @@ proc emit_wall sx1, sz1, sx2, sz2, face, edge, e_type, textureId {
     add -120 to walls;
     add length(frameEdge) + 1 to walls;
     add $textureId to walls;
+    add $roomId to walls;
 }
 
 proc init {
-        _c "#39.5;";
+    _c "#39.5;";
     playerX = 39.5;#55.1;
     _c "#50.5;";
     playerY = 50.5;#37.5;

@@ -20,9 +20,7 @@
         },
         {
             "type": "goboscript-build",
-            "problemMatcher": [
-                "goboscript"
-            ],
+            "problemMatcher": [],
             "label": "goboscript: goboscript-build"
         }
     ]

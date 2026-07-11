@@ -33,14 +33,24 @@ onflag {
 
 
 on "renderWalls" {
+    renderAll;
+}
+
+proc renderAll {
     
-   
+    drawCount = 0;
+    connectedRoom = "vectorRooms"."connectedRoom";
+    currentRoom = "vectorRooms"."currentRoom";
     
-    renderWalls;
-    #renderTime = round(days_since_2000() * 86400000 - renderTime);
-    #renderTime += "checkerboardFloor"."renderTime";
-    #drawCount += "checkerboardFloor"."drawCount";
-    #drawCountTotal= drawCount;
+    renderTime = days_since_2000() * 86400000;
+    if connectedRoom > -1{ 
+        renderWalls connectedRoom;
+        drawEntities connectedRoom;
+    }
+    
+    renderWalls currentRoom;
+    drawEntities currentRoom;
+    renderTime = round(days_since_2000() * 86400000 - renderTime);
     
 }
 
@@ -48,73 +58,128 @@ on "renderWalls" {
 # --- RENDERER (SHAPE GENERATION) ---------------------------------
 # =================================================================
 
-proc renderWalls {
-    drawCount = 0;
-    i = 1;
-    renderTime = days_since_2000() * 86400000;   
-    repeat  length(walls)/12 {
-        _c "//1. EXTRACT 11-ELEMENT STRIDE";
-        rx1   = walls[i];
-        z1    = walls[i + 1];
-        rx2   = walls[i + 2];
-        z2    = walls[i + 3];
-        face  = walls[i + 4];
-        tile  = walls[i + 5]; 
-        edge  = walls[i + 6];
-        cmdIdx = walls[i + 7];
-        wCeilY = walls[i + 8];
-        wFlrY  = walls[i + 9];
-        frameEdge_idx = walls[i + 10];
-        
-        _c "//Project true Y bounds";
-        ceil_y1  = wCeilY / z1;
-        floor_y1 = wFlrY / z1;
-        ceil_y2  = wCeilY / z2;
-        floor_y2 = wFlrY / z2;
-        
+proc renderWalls roomId {
+    
+    wallIdx = 1;
+    
+    repeat length(walls)/13 {
+        if walls[wallIdx + 5] != 1 or walls[wallIdx + 12] == $roomId {
+            
+            _c "//1. EXTRACT 13-ELEMENT STRIDE";
+            rx1   = walls[wallIdx];
+            z1    = walls[wallIdx + 1];
+            rx2   = walls[wallIdx + 2];
+            z2    = walls[wallIdx + 3];
+            face  = walls[wallIdx + 4];
+            tile  = walls[wallIdx + 5]; 
+            edge  = walls[wallIdx + 6];
+            cmdIdx = walls[wallIdx + 7];
+            wCeilY = walls[wallIdx + 8];
+            wFlrY  = walls[wallIdx + 9];
+            frameEdge_idx = walls[wallIdx + 10];
+            textureId= walls[wallIdx + 11];
+            roomId= walls[wallIdx + 12];
+            
+            _c "//Project true Y bounds";
+            ceil_y1  = wCeilY / z1;
+            floor_y1 = wFlrY / z1;
+            ceil_y2  = wCeilY / z2;
+            floor_y2 = wFlrY / z2;
+            
 
-        _c "//2. THE PALETTE LOOKUP";
-        set_pen_color wallColors[tile-1];
-        if tile==1 {set_pen_color wallColors[frameEdge[frameEdge_idx+3]+2]; }
+            _c "//2. THE PALETTE LOOKUP";
+            set_pen_color wallColors[tile-1];
+            if tile==1 {set_pen_color wallColors[frameEdge[frameEdge_idx+3]+2]; }
+            
+            if face == 1 { change_pen_brightness -20; }
         
-        if face == 1 { change_pen_brightness -20; }
-       
-        if rx2-rx1 > 3 {
-            _c "//3. DRAW SOLID WALL";
-            if z1 < z2 {            
-                trapezoid rx1, rx2, ceil_y1, floor_y1, floor_y2, ceil_y2, tile;
-            } else {            
-                trapezoid rx2, rx1, ceil_y2, floor_y2, floor_y1, ceil_y1, tile;
+            if rx2-rx1 > 3 {
+                _c "//3. DRAW SOLID WALL";
+                if z1 < z2 {            
+                    trapezoid rx1, rx2, ceil_y1, floor_y1, floor_y2, ceil_y2, tile;
+                } else {            
+                    trapezoid rx2, rx1, ceil_y2, floor_y2, floor_y1, ceil_y1, tile;
+                }
+            }
+            else {
+                _c "small Wall";
+                
+                set_pen_size abs(rx2-rx1)-0.5;
+                goto (rx1+rx2)/2, (ceil_y1+ceil_y2)/2; 
+                pen_down; 
+                goto (rx1+rx2)/2, (ceil_y1+ceil_y2)/2;
+                goto (rx1+rx2)/2, (floor_y1+floor_y2)/2;
+                pen_up;
+            }
+
+            _c "//4. HAND OFF TO 2D DECORATION PARSER";
+            if cmdIdx > 0 {
+                drawWallShader cmdIdx, wCeilY, wFlrY;
+            }        
+
+            _c "//Solid Structural Outline";
+            set_pen_color "#000000";
+            set_pen_size 1;
+            goto rx1, ceil_y1; pen_down; goto rx1, floor_y1; 
+            goto rx2, floor_y2; goto rx2, ceil_y2; goto rx1, ceil_y1; pen_up;
+            drawCount += 5;
+
+           
+        }
+        wallIdx += 13;
+    }    
+}
+
+proc drawEntities roomId {
+    
+    ent_idx = 1;
+    
+    repeat length(frameEntity) / 8 { 
+        if frameEntity[ent_idx + 6] == $roomId {
+            ent_type = frameEntity[ent_idx];
+            roomId = frameEntity[ent_idx + 6];
+            vIdx = frameEntity[ent_idx + 7];
+            
+            if (drawCommands[vIdx] != "EoL") {
+                drawEntityShader;
             }
         }
-        else {
-            _c "small Wall";
-            
-            set_pen_size abs(rx2-rx1)-0.5;
-            goto (rx1+rx2)/2, (ceil_y1+ceil_y2)/2; 
-            pen_down; 
-            goto (rx1+rx2)/2, (ceil_y1+ceil_y2)/2;
-            goto (rx1+rx2)/2, (floor_y1+floor_y2)/2;
-            pen_up;
-        }
-
-        _c "//4. HAND OFF TO 2D DECORATION PARSER";
-        if cmdIdx > 0 {
-            drawWallShader cmdIdx, wCeilY, wFlrY;
-        }
-        
-
-        _c "//Solid Structural Outline";
-        set_pen_color "#000000";
-        set_pen_size 1;
-        goto rx1, ceil_y1; pen_down; goto rx1, floor_y1; 
-        goto rx2, floor_y2; goto rx2, ceil_y2; goto rx1, ceil_y1; pen_up;
-        drawCount += 5;
-
-
-        i += 12;
+        ent_idx += 8;
     }
-    renderTime = round(days_since_2000() * 86400000 - renderTime);
+}
+
+proc drawEntityShader{
+        
+    until drawCommands[vIdx] == "EoL" {
+
+        ent_sx   = drawCommands[vIdx + 2];
+        ent_sy   = drawCommands[vIdx + 3];
+        ent_rad  = drawCommands[vIdx + 4];
+        ent_z    = drawCommands[vIdx + 5];
+        
+        _c "# Apply depth shading";
+        alpha = ent_z * 10;
+        if alpha < 100 {
+            set_pen_transparency alpha;
+            
+            _c "# Draw simple circle using Pen";
+            set_pen_size ent_rad * 2;
+            
+            if ent_type == 1 { set_pen_color "#ff3366"; } 
+            else { set_pen_color "#00ffcc"; }            
+        
+            pen_up;
+            _c "# Offset Y slightly up so the circle sits ON the floor, not centered on it";
+            goto ent_sx, ent_sy - ent_rad;
+            pen_down;
+            goto ent_sx, ent_sy - ent_rad;
+            pen_up;
+            
+            drawCount += 1;
+        }
+        vIdx += 6;
+    }
+
 }
 
 proc drawWallShader startIdx, worldCeilY, worldFloorY {
@@ -181,7 +246,7 @@ proc drawWallShader startIdx, worldCeilY, worldFloorY {
         _c "# Step over the 'EoL' token to the next command";      
     }
     
-        _c "# parse multiple dash_line commands if needed";
+    _c "# parse multiple dash_line commands if needed";
     until drawCommands[vIdx] != "dash_line" {
         goto drawCommands[vIdx+1], drawCommands[vIdx+2];
         point_in_direction drawCommands[vIdx+3];
@@ -243,6 +308,7 @@ proc drawWallShader startIdx, worldCeilY, worldFloorY {
         _c "//Advance by the 6-element line stride";
         vIdx += 6; 
     }
+
 }
 
 proc trapezoid x1, x2, y1, y2, y3, y4, accuracy {

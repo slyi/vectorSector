@@ -87,7 +87,7 @@ proc process_walls {
         
         }
           
-        wall_idx += 12;
+        wall_idx += 13;
     }
     shaderTime = round(days_since_2000() * 86400000 - shaderTime);
 }
@@ -106,7 +106,8 @@ proc read_wall_data {
     wall_ceiling = walls[wall_idx + 8];
     wall_floor   = walls[wall_idx + 9];
     wall_frame_idx = walls[wall_idx + 10]; 
-    wall_roomTexture = walls[wall_idx + 11]; 
+    wall_roomTexture = walls[wall_idx + 11];
+    wall_roomId=  walls[wall_idx + 12];
 }
 
 proc read_frameEdge_data {

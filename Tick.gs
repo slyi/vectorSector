@@ -10,11 +10,11 @@ onflag {
     fpslasttime = 0;
     show stats;
 
-    forever {                
+    forever {
         erase_all;
         broadcast "_2.5DEngine";
         broadcast "wallShader";
-        
+        broadcast "entityShader";
         broadcast "renderFloor";
         broadcast "renderWalls";
         Tick fpslasttime;
