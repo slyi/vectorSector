@@ -109,14 +109,15 @@ proc draw_checkerboard {
             if zB < 0.1 { zB = 0.1; }
             if zC < 0.1 { zC = 0.1; }
             if zD < 0.1 { zD = 0.1; }
-        }
         
-        set_pen_transparency -50 + zA * 10;
+        
+            set_pen_transparency -50 + zA * 10;
 
-        fillFloorQuad (xA * focalLength) / zA, floorYOffset / zA, 
-                      (xB * focalLength) / zB, floorYOffset / zB, 
-                      (xC * focalLength) / zC, floorYOffset / zC, 
-                      (xD * focalLength) / zD, floorYOffset / zD;
+            fillFloorQuad (xA * focalLength) / zA, floorYOffset / zA, 
+                        (xB * focalLength) / zB, floorYOffset / zB, 
+                        (xC * focalLength) / zC, floorYOffset / zC, 
+                        (xD * focalLength) / zD, floorYOffset / zD;
+        }
         t_idx += 1;
     }
 }

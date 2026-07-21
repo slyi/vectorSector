@@ -63,6 +63,16 @@ var curr_depth;
 var newX; var newY;
 var tileX; var tileY;
 
+# Entity direction (bung bearing) locals — resolved in process_room Pass 3
+var ex; var ey; var dxv; var dyv; var viewDir; var entityDir; var rel;
+
+# Entity view direction (world azimuth from entity to player)
+var e_viewDir;
+
+# Entity near-plane / pass-through: hide barrels you have walked right up to
+# (you pass THROUGH them) instead of lingering huge for a moment.
+var ENT_PASS_THROUGH_Z = 0.9;
+
 
 var furthest_wall_depth = 0;
 
@@ -488,6 +498,15 @@ proc process_room targetRoom {
             tileX = (t_idx - 1) % 64;
             tileY = floor((t_idx - 1) / 64);
             
+            _c "# Resolve the bung bearing in the 3D engine (player + entity + world known here).";
+            _c "# bar->player world azimuth via engine atan2 pattern: atan(dx/dy) + 180*(dy<0).";
+            _c "# TODO: source per-entity entityDir from rooms[ent_ptr + 2] once authored in the";
+            _c "#       map pipeline; for now it is hardcoded to -90.";
+            ex = tileX + 0.5;  ey = tileY + 0.5;
+            dxv = playerX - ex;  dyv = playerY - ey;
+            viewDir = atan(dxv / dyv) + 180 * (dyv < 0);
+            entityDir = -90;
+            rel = entityDir - viewDir;
             _c "# 2. Calculate offset to the dead-center of the tile";
             dxC = (tileX + 0.5) - playerX;
             dyC = (tileY + 0.5) - playerY;
@@ -496,11 +515,12 @@ proc process_room targetRoom {
             txC = dxC * camCos - dyC * camSin;
             tzC = dxC * camSin + dyC * camCos;
             
-            _c "# 4. Near Plane Clipping Guard";
-            if tzC > 0.1 {
+            _c "# 4. Near Plane / Pass-Through Guard";
+            if tzC > ENT_PASS_THROUGH_Z {
                 
-                _c "# Push 8-stride tuple: [Type, zAvg, x1, z1, x2, z2, roomId, drawIdx]";
+                _c "# Push 9-stride tuple: [Type, zAvg, x1, z1, x2, z2, roomId, drawIdx, dir]";
                 _c "# x1/x2 bounds represent a 1-unit wide camera-facing billboard";
+                _c "# dir = resolved bung bearing (entityDir - viewDir) for the shader";
                 add ent_type to frameEntity;
                 add tzC to frameEntity;        # zAvg (Used for sorting)
                 add txC - 0.5 to frameEntity;  # x1 (Left edge)
@@ -509,7 +529,9 @@ proc process_room targetRoom {
                 add tzC to frameEntity;        # z2
                 add $targetRoom to frameEntity;# roomId
                 add 0 to frameEntity;          # drawCommand_idx_start
-
+                add rel to frameEntity;        # dir (bung bearing)
+                add viewDir to frameEntity;    # viewDir (entity-to-player azimuth)
+                add t_idx  to frameEntity;     # tile index of entity 
             }
             
             _c "# Advance pointer by 2 for the [tile_idx, type] stride";
@@ -629,9 +651,7 @@ proc insertWall{
         if roomId > 0 {
             populate_frameEdge c_id, edgeRoomTexture;
         }
-        else{
-            walls[length(walls)] = -1;
-        }
+       
     }
 }
 

@@ -60,7 +60,7 @@ proc process_walls {
     delete drawCommands;
     focalLength = "vectorRooms"."focalLength";
     wall_idx = 1;
-    wallsLength = length(walls)/12;
+    wallsLength = length(walls)/13;
     
     repeat wallsLength {
         walls[wall_idx + 7] = length(drawCommands) + 1;

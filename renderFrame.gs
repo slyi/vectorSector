@@ -1,9 +1,10 @@
 hide;
 set_x 0;
 set_size 0;
-costumes "assets/576aeb89.svg" as "blank", "assets/big.svg" as "big", "assets/eea92c50.svg" as "2dash", "assets/431b9a82.svg" as "3dash", "assets/1dash.svg" as "1dash", "assets/greekKeyA.svg" as "greekKeyA", "assets/greekKeyB.svg" as "greekKeyB", "assets/greekKeyC.svg" as "greekKeyC";
+costumes "assets/576aeb89.svg" as "blank", "assets/big.svg" as "big", "assets/eea92c50.svg" as "2dash", "assets/431b9a82.svg" as "3dash", "assets/1dash.svg" as "1dash", "assets/greekKeyA.svg" as "greekKeyA", "assets/greekKeyB.svg" as "greekKeyB", "assets/greekKeyC.svg" as "greekKeyC", "assets/barrelBody.svg" as "barrelBody", "assets/plantPot.svg" as "plantPot";
 var renderTime=0;
 var drawCount=0;
+var lines_drawn;
 
 # Render Queue Variables
 var rx1; var ry1; 
@@ -43,13 +44,13 @@ proc renderAll {
     currentRoom = "vectorRooms"."currentRoom";
     
     renderTime = days_since_2000() * 86400000;
+    _c "draw connected room first";
     if connectedRoom > -1{ 
-        renderWalls connectedRoom;
-        drawEntities connectedRoom;
+        drawRoom connectedRoom;        
     }
+    _c "draw current room last";
+    drawRoom currentRoom;
     
-    renderWalls currentRoom;
-    drawEntities currentRoom;
     renderTime = round(days_since_2000() * 86400000 - renderTime);
     
 }
@@ -58,7 +59,14 @@ proc renderAll {
 # --- RENDERER (SHAPE GENERATION) ---------------------------------
 # =================================================================
 
-proc renderWalls roomId {
+proc drawRoom roomId{
+    _c "draw walls first then entities for each room";
+    drawWalls $roomId;
+    drawEntities $roomId;
+}
+
+
+proc drawWalls roomId {
     
     wallIdx = 1;
     
@@ -134,60 +142,190 @@ proc drawEntities roomId {
     
     ent_idx = 1;
     
-    repeat length(frameEntity) / 8 { 
+    repeat length(frameEntity) / 11 { 
         if frameEntity[ent_idx + 6] == $roomId {
             ent_type = frameEntity[ent_idx];
             roomId = frameEntity[ent_idx + 6];
             vIdx = frameEntity[ent_idx + 7];
             
-            if (drawCommands[vIdx] != "EoL") {
+            if (drawCommands[vIdx] != "EoEnt") {
                 drawEntityShader;
             }
         }
-        ent_idx += 8;
+        ent_idx += 11;
     }
 }
 
 proc drawEntityShader{
         
-    until drawCommands[vIdx] == "EoL" {
+    until drawCommands[vIdx] == "EoEnt" or vIdx > length(drawCommands) {
+        cmd = drawCommands[vIdx];
+        if cmd == "stamp" {
+            _c "# token + (x, y, size, dir, costume_name) = 6 elements";
 
-        ent_sx   = drawCommands[vIdx + 2];
-        ent_sy   = drawCommands[vIdx + 3];
-        ent_rad  = drawCommands[vIdx + 4];
-        ent_z    = drawCommands[vIdx + 5];
-        
-        _c "# Apply depth shading";
-        alpha = ent_z * 10;
-        if alpha < 100 {
-            set_pen_transparency alpha;
-            
-            _c "# Draw simple circle using Pen";
-            set_pen_size ent_rad * 2;
-            
-            if ent_type == 1 { set_pen_color "#ff3366"; } 
-            else { set_pen_color "#00ffcc"; }            
-        
-            pen_up;
-            _c "# Offset Y slightly up so the circle sits ON the floor, not centered on it";
-            goto ent_sx, ent_sy - ent_rad;
-            pen_down;
-            goto ent_sx, ent_sy - ent_rad;
-            pen_up;
-            
+            set_ghost_effect 0;
+            switch_costume drawCommands[vIdx + 5];
+            point_in_direction drawCommands[vIdx + 4];
+            set_size 1/0;
+            goto drawCommands[vIdx + 1], drawCommands[vIdx + 2];
+            set_size drawCommands[vIdx + 3];
+            stamp;
             drawCount += 1;
+            vIdx += 6;
+        } elif cmd == "ellipse" {
+            _c "# token + (x, y, w, h, dir, brightnessDelta, color) = 8 elements";
+            ex = vIdx + 1; ey = vIdx + 2;
+            ew = vIdx + 3; eh = vIdx + 4; edir = vIdx + 5;
+            ebr = vIdx + 6; ecol = vIdx + 7;
+            set_pen_transparency 0;
+            set_pen_color drawCommands[ecol];
+            set_size 1/0;
+            goto drawCommands[ex], drawCommands[ey];
+            change_pen_brightness drawCommands[ebr];
+            draw_ellipse drawCommands[ex], drawCommands[ey], drawCommands[ew], drawCommands[eh], drawCommands[edir];
+            change_pen_brightness -drawCommands[ebr];
+            drawCount += 1;
+            vIdx += 8;
+        } elif cmd == "penline" {
+            _c "# token + (x1, y1, x2, y2, pen_size) = 6 elements";
+
+            set_pen_transparency 0;
+            set_pen_size drawCommands[vIdx + 5];
+            set_size 1/0;
+            pen_up; goto drawCommands[vIdx + 1], drawCommands[vIdx + 2];
+            pen_down; goto drawCommands[vIdx + 3], drawCommands[vIdx + 4]; pen_up;
+            drawCount += 1;
+            vIdx += 6;
+        } elif cmd == "trapezoid" {
+            _c "# Trapezoid token + (x1, x2, y1, y2, y3, y4, color, border) = 9 elements";
+            # Extract the projected coordinates and color
+            rx1 = drawCommands[vIdx+1];
+            rx2 = drawCommands[vIdx+2];
+            ceil_y1 = drawCommands[vIdx+3];
+            floor_y1 = drawCommands[vIdx+4];
+            ceil_y2 = drawCommands[vIdx+5];
+            floor_y2 = drawCommands[vIdx+6];
+            t_color = drawCommands[vIdx+7];
+            border = drawCommands[vIdx+8]; 
+            
+            set_pen_color t_color;
+           
+            _c "//3. DRAW trapezoid";
+            #set_pen_transparency 50;
+            #QuadFiller rx1, ceil_y1, rx1, floor_y1, rx2, floor_y2, rx2, ceil_y2;
+            if abs(ceil_y1 - floor_y1 ) > abs(ceil_y2 - floor_y2) {
+                trapezoid rx1, rx2, ceil_y1, floor_y1, floor_y2, ceil_y2, 1;
+            } else {
+                trapezoid rx2, rx1, ceil_y2, floor_y2, floor_y1, ceil_y1, 1;
+            }
+            if (border==1){
+                _c "//Solid Structural Outline";
+                set_pen_color "#000000";
+                set_pen_size 1;
+                goto rx1, ceil_y1; pen_down; goto rx1, floor_y1; 
+                goto rx2, floor_y2; goto rx2, ceil_y2; goto rx1, ceil_y1; pen_up;
+                drawCount += 5;
+            }
+
+            vIdx += 9;
+        } elif cmd == "quad" {
+            _c "# Trapezoid token + (x1, y1, x2, y2, x3, y3, x4, y4, color, border) = 11 elements";
+            # Extract the projected coordinates and color
+            rx1 = drawCommands[vIdx+1];
+            ry1 = drawCommands[vIdx+2];
+            rx2 = drawCommands[vIdx+3];
+            ry2 = drawCommands[vIdx+4];
+            rx3 = drawCommands[vIdx+5];
+            ry3 = drawCommands[vIdx+6];
+            rx4 = drawCommands[vIdx+7];
+            ry4 = drawCommands[vIdx+8];
+            
+            t_color = drawCommands[vIdx+9];
+            border = drawCommands[vIdx+10]; 
+            
+            set_pen_color t_color;
+           
+            _c "//3. DRAW quad";
+            #set_pen_transparency 50;
+            QuadFiller rx1, ry1, rx2, ry2, rx3, ry3, rx4, ry4;
+
+            if (border==1){
+                _c "//Solid Structural Outline";
+                set_pen_color "#000000";
+                set_pen_size 1;
+                goto rx1, ry1; 
+                pen_down; 
+                goto rx1, ry1; 
+                goto rx2, ry2; 
+                goto rx3, ry3; 
+                goto rx4, ry4;
+                goto rx1, ry1; 
+                pen_up;
+                drawCount += 5;
+            }
+
+            vIdx += 11;
+        } elif cmd == "drawEntity" {
+            _c "# legacy circle path (types 2, 3): token + (type, sx, sy, radius, z) = 6 elements";
+            ent_type = drawCommands[vIdx + 1];
+            ent_sx = drawCommands[vIdx + 2];
+            ent_sy = drawCommands[vIdx + 3];
+            ent_rad  = drawCommands[vIdx + 4];
+            set_pen_transparency 0;
+            set_pen_size ent_rad * 2;
+            if ent_type == 1 { set_pen_color "#ff3366"; } else { set_pen_color "#00ffcc"; }
+            set_size 1/0;
+            pen_up; goto ent_sx, ent_sy - ent_rad; pen_down; goto ent_sx, ent_sy - ent_rad; pen_up;
+            drawCount += 1;
+            vIdx += 6;
+        } else {
+            vIdx += 1;
         }
-        vIdx += 6;
     }
 
 }
 
+# =================================================================
+# --- ELLIPSE PRIMITIVE (barrel lid / bung) -----------------------
+# =================================================================
+proc ellispe stepsize, circles, _2h, w_h {
+    set_pen_size $_2h;
+    pen_down;
+    pen_up;
+    r = $stepsize;
+    i3 = 0;
+    repeat $circles {
+        set_pen_size $_2h * sqrt(1 - r * r / $w_h);
+        r += -2 * $stepsize / ($circles * 2);
+        move -2 * $stepsize / ($circles * 2) * ($circles - i3);
+        pen_down;
+        move 4 * $stepsize / ($circles * 2) * ($circles - i3);
+        pen_up;
+        move -2 * $stepsize / ($circles * 2) * ($circles - i3);
+        i3 += 1;
+    }
+    drawCount += i3;
+}
+
+proc draw_ellipse x, y, w, h, dir {
+    goto $x, $y;
+    point_in_direction $dir;
+    if $w > $h {
+        ellispe $w - $h * $h / $w, ($w - $h) / ($w + $h) * ($w / 2) + 1, 2 * $h, $w * $w - $h * $h;
+    }
+    else {
+        turn_right 90;
+        ellispe $h - $w * $w / $h, ($h - $w) / ($h + $w) * ($h / 2) + 1, 2 * $w, $h * $h - $w * $w;
+    }
+}
+
 proc drawWallShader startIdx, worldCeilY, worldFloorY {
     vIdx = $startIdx;
+    maxLen=length(drawCommands);
     if (drawCommands[vIdx] == "EoW") {stop_this_script;}
     _c "//--- PHASE 1: STAMPS (Vertical Lines/Dashes) ---";
     point_in_direction  90 ;
-    until drawCommands[vIdx] == "EoL" or vIdx > length(drawCommands) {
+    until drawCommands[vIdx] == "EoL" or vIdx > maxLen {
         sx = drawCommands[vIdx];
         sz = drawCommands[vIdx + 1];
         costume_id = drawCommands[vIdx + 2];
@@ -279,7 +417,7 @@ proc drawWallShader startIdx, worldCeilY, worldFloorY {
     }
 
 
-    until drawCommands[vIdx] == "EoW" or vIdx > length(drawCommands) {
+    until drawCommands[vIdx] == "EoW" or vIdx > maxLen {
 
         _c "//Extract pre-calculated SCREEN coordinates and depth";
         px1 = drawCommands[vIdx];
@@ -418,4 +556,44 @@ proc fillTri x1, y1, y2, m1, m2, mo1, mo2 {
         drawCount += 4;
     }
 }
+
+proc QuadFiller x1, y1, x2, y2, x3, y3, x4, y4 {
+    azexTriFiller $x1, $y1, $x2, $y2, $x3, $y3;
+    azexTriFiller $x1, $y1, $x3, $y3, $x4, $y4;
+}
+
+proc azexTriFiller x1, y1, x2, y2, x3, y3 {
+    a = sqrt(($x2 - $x3) * ($x2 - $x3) + ($y2 - $y3) * ($y2 - $y3));
+    b = sqrt(($x3 - $x1) * ($x3 - $x1) + ($y3 - $y1) * ($y3 - $y1));
+    c = sqrt(($x2 - $x1) * ($x2 - $x1) + ($y2 - $y1) * ($y2 - $y1));
+    p = a + (b + c);
+    r = sqrt((c + b - a) * (a + c - b) * (p - c * 2) / p);
+    goto (a * $x1 + b * $x2 + c * $x3) / p, (a * $y1 + b * $y2 + c * $y3) / p;
+    azexTriangleHelper x_position() - $x1, y_position() - $y1, x_position() - $x2, y_position() - $y2, x_position() - $x3, y_position() - $y3, r, $x1, $y1, $x2, $y2, $x3, $y3;
+}
+
+proc azexTriangleHelper inx1, iny1, inx2, iny2, in3x, in3y, inr, x1, y1, x2, y2, x3, y3 {
+    if a < b and a < c { a = 0.5 - $inr / (4 * sqrt($inx1 * $inx1 + $iny1 * $iny1)); }
+    elif b < c { a = 0.5 - $inr / (4 * sqrt($inx2 * $inx2 + $iny2 * $iny2)); }
+    else { a = 0.5 - $inr / (4 * sqrt($in3x * $in3x + $in3y * $in3y)); }
+    
+    set_pen_size $inr;
+    pen_down;
+    set_pen_size a * $inr + 2;
+    goto $x3 + a * $in3x, $y3 + a * $in3y;
+    
+    b = a;
+    loopSize = ceil(ln(2.5/$inr) / ln(a))+1;
+    repeat loopSize {
+        set_pen_size a * $inr + 2;
+        goto $x1 + a * $inx1, $y1 + a * $iny1;
+        goto $x2 + a * $inx2, $y2 + a * $iny2;
+        goto $x3 + a * $in3x, $y3 + a * $in3y;
+        a *= b;
+    }
+    drawCount += (loopSize * 3) + 1;
+    pen_up;
+}
+
+
 proc  _c comment {}

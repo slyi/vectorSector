@@ -33,6 +33,8 @@ room_edges_dict = {}
 room_tiles_dict = {}  
 
 # Temporary holding for raw entity instances discovered on load
+# TODO: also capture a starting facing/direction per entity (authored in
+#       mapEditor.py) so it can be packed into the rooms list entity block.
 entities_found = []
 
 room_start_list = []
@@ -394,6 +396,9 @@ def main():
         rooms_list.extend([min_x, min_y, max_x, max_y])
         
         # 4. Local Entity Block (2-Stride: [tile_idx, type])
+        # TODO: extend each entity to a 3-stride [tile_idx, type, direction] once the
+        #       map editor authors a starting facing per entity. Also bump the
+        #       pointer-math shift below from (num_ent * 2) to (num_ent * 3).
         for ent in r_entities:
             rooms_list.extend([ent['tile_idx'], ent['type']])
         

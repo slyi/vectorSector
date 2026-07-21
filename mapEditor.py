@@ -7,6 +7,10 @@ MAP_HEIGHT = 64
 CELL_SIZE = 12  # Pixel size per tile cell on screen
 
 # Color palette and labels for tile types
+# TODO: entities need a starting facing/direction authored in the editor
+#       (e.g. per-cell facing, or a direction token appended to the entity glyph)
+#       so it can be exported into map.txt and carried through map2rooms.py ->
+#       rooms.txt -> process_room Pass 3 -> frameEntity -> entityShader.gs.
 TILES = {
     '0': ('#222222', '0: Floor'),
     '1': ('#00ffcc', '1: Wall'),

@@ -1,0 +1,21 @@
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="480" height="720" viewBox="0 0 480 720">
+<g fill="none" stroke="none" stroke-width="0.5" stroke-miterlimit="10">
+  <!-- Anchor the scale at the BOTTOM (floor contact) so the drum stretches UP -->
+  <!-- to meet the pen lid. top-edge 0 -> -36 (5% of 720), bottom-edge 720 -> 720. -->
+  <g transform="translate(-12,-36) scale(1.05)">
+    <!-- bottom drum head (Kept at 665 to maintain floor contact) -->
+    <ellipse cx="240" cy="665" rx="225" ry="55" fill="#234A6E" stroke="#000000" stroke-width="3"/>
+    
+    <!-- body: left + top + right borders only (Extended up to 49) -->
+    <polyline points="15,665 15,49 465,49 465,665" fill="#234A6E" stroke="#000000" stroke-width="3" />
+    
+    <!-- top drum head (Shifted up to 49) -->
+    <ellipse cx="240" cy="49" rx="225" ry="55" fill="#36689E" stroke="#000000" stroke-width="3"/>
+    
+    <!-- drum ribs: evenly re-spaced across the new 616px body height -->
+    <path d="M 15,203 A 225,55 0 0,0 465,203" fill="none" stroke="#000000" stroke-width="3" />
+    <path d="M 15,357 A 225,55 0 0,0 465,357" fill="none" stroke="#000000" stroke-width="3" />
+    <path d="M 15,511 A 225,55 0 0,0 465,511" fill="none" stroke="#000000" stroke-width="3" />
+  </g>
+</g>
+</svg>
