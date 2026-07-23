@@ -372,7 +372,7 @@ proc drawWallShader startIdx, worldCeilY, worldFloorY {
         vIdx += 2;
 
         _c "# 2. Continuous Drawing Loop";
-        until drawCommands[vIdx] == "EoL" {
+        until drawCommands[vIdx] == "EoL" or vIdx > maxLen {
             goto drawCommands[vIdx], drawCommands[vIdx + 1];
             drawCount += 1;
             vIdx += 2;
@@ -392,7 +392,7 @@ proc drawWallShader startIdx, worldCeilY, worldFloorY {
 
         vIdx += 5;
         if parity == 1 { 
-            until drawCommands[vIdx] == "EoL" {
+            until drawCommands[vIdx] == "EoL" or vIdx > maxLen {
                 pen_down; 
                 move drawCommands[vIdx]; 
                 pen_up;
@@ -401,7 +401,7 @@ proc drawWallShader startIdx, worldCeilY, worldFloorY {
                 vIdx += 2;
             } 
         } else { 
-            until drawCommands[vIdx] == "EoL" {
+            until drawCommands[vIdx] == "EoL" or vIdx > maxLen {
                 move drawCommands[vIdx]; 
                 pen_down;
                 move drawCommands[vIdx+1]; 
@@ -463,6 +463,7 @@ proc trapezoid x1, x2, y1, y2, y3, y4, accuracy {
     oy2 = xDir * tan((180 - abc) / (2 * xDir));
     oy3 = xDir2 * tan(abc / (2 * xDir2));
     oy4 = xDir2 * tan(dab / (2 * xDir));
+    
     
     if abs(base1) / 2 < base2 / 2 {
         radius = abs(base1) / 2;
@@ -527,6 +528,8 @@ proc fillTri x1, y1, y2, m1, m2, mo1, mo2 {
         } else {
             p = 1 - inradius / (4 * sqrt(distC));
         }
+        _c "// GUARD: If p is exactly 0, ln(p) is 0, causing Infinity loops. Force above 0.";
+        if p <= 0.05 { p = 0.05; }
 
         set_pen_size inradius;
         goto inX, inY;

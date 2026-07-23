@@ -151,10 +151,10 @@ proc offset5x5BrickWallPattern {
             stamp_id = (current_step % 2) + 3; 
             emit_vertical_element (current_step / totalSteps), stamp_id;
             current_step += 1;
-        }
-        add "EoL" to drawCommands;
+        }        
     }
-    
+    add "EoL" to drawCommands;
+
     _c "#PHASE 2: PEN (Horizontal Mortar Lines)";
     row = 1;
     repeat 4 {
